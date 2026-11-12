@@ -1,0 +1,1 @@
+{"adapter_keys":{"dp-alpha":"fixture-adapter-key-dp-alpha","dp-beta":"fixture-adapter-key-dp-beta"},"note":"FIXTURE adapter keys for tests and the smoke transcript only. Production adapter keys are operator-held and never ship in a repo."}

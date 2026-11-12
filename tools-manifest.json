@@ -1,0 +1,1 @@
+{"server":"eclipse-routeseal","version":"0.1.0","tools":["routeseal_seal_dispatch","routeseal_get_verdict","routeseal_check","routeseal_recompute","routeseal_export_captures"]}

@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eclipse-routeseal"
+version = "0.1.0"
+description = "Cyan Eclipse Routeseal — dispatch-point routing decision witness (MCP server)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Cyan Eclipse Technologies LLC"}]
+
+[tool.setuptools]
+py-modules = ["routeseal", "logic", "server"]

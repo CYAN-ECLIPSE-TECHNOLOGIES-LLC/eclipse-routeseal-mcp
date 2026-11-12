@@ -1,0 +1,7 @@
+ROUTESEAL SMOKE TRANSCRIPT — 2026-11-11 — Shard E droplet, python3 server.py over stdio
+SMOKE PASS: 5 tools · AS-DECLARED · DEVIATION · CANDIDATE-SET-ABSENT · platform-log rejected · check · export · recompute reproduced
+
+UNIT SUITE:
+Ran 34 tests in 0.028s
+
+OK

@@ -1,0 +1,351 @@
+#!/usr/bin/env python3
+# Cyan Eclipse Routeseal — seal store, adapter provenance, receipt
+# chain, metering (SPEC-ROUTESEAL sections 2-4).
+# Copyright © 2026 Cyan Eclipse Technologies LLC · cetech.ai
+"""State layer for the Routeseal MCP server.
+
+Custody (RT-C5): the record store carries ONLY the section 2 field
+set — task digests, candidate identifiers as presented, selected
+target, stated selection reason as declared, routing-policy version
+digest, declared affiliation flags, timestamps, seals, verdict +
+named grammar basis. Task bodies are digested by the caller and
+never enter this module. Candidate records are reduced at the door
+to exactly the grammar's routing facts (id, affiliation flag,
+capabilities, cost, latency) — nothing else a dispatch point
+presents is retained.
+
+Provenance (RT-C4 / RTE-REQ-012, the RT-K1 guard): a capture is
+accepted only through the buyer-side dispatch-point adapter channel:
+source == "dispatch-point-adapter", an HMAC attestation from the
+adapter registered for that dispatch point, and a binding reference
+to the dispatch event. Platform-produced traces, logs, or
+observability exports — and any relay of them — are rejected, the
+rejection receipted, and the dispatch caps at UNVERIFIABLE.
+
+Aggregation fence (RT-C6): this module exposes per-record reads
+only. There is no cross-operator aggregation code path.
+"""
+import hashlib
+import hmac
+import json
+import os
+import sys
+from datetime import datetime, timezone
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import logic  # noqa: E402
+
+TOOL_VERSION = "0.1.0"
+SERVER_ID = "eclipse-routeseal"
+
+CLAIM = ("Routeseal seals the routing decision at the moment of "
+         "dispatch — the task, the candidates the router passed "
+         "over, the target it chose, and the reason it stated. If "
+         "the choice diverged from your stated routing policy, or "
+         "picked an affiliated target over the policy's preferred "
+         "candidate, the sealed record says so, and anyone can "
+         "recompute the verdict from the record itself.")
+
+# The whole record-store field set (SPEC section 2). Nothing else is
+# written into a record. (RT-C5 / RTE-REQ-005.)
+RECORD_FIELDS = ("dispatch_seal_id", "task_digest", "candidate_set",
+                 "candidate_set_absent", "selected_target",
+                 "stated_reason", "policy_version", "policy_digest",
+                 "affiliation_flags", "dispatch_timestamp",
+                 "dispatch_point_id", "binding_ref", "seal",
+                 "verdict", "clause", "passed_over_preferred",
+                 "grammar_version", "receipt_ref")
+
+# Candidate facts the grammar names — the only per-candidate fields
+# retained (RT-C5).
+CANDIDATE_FIELDS = ("id", "affiliated", "capabilities", "cost",
+                    "latency_ms")
+
+METERED_VERDICTS = ("AS-DECLARED", "DEVIATION")  # PC-8: one charge
+# per dispatch seal; CANDIDATE-SET-ABSENT / UNVERIFIABLE never meter
+# (RTE-REQ-015).
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _reduce_candidate(cand: dict) -> dict:
+    return {k: cand.get(k) for k in CANDIDATE_FIELDS
+            if cand.get(k) is not None}
+
+
+class Store:
+    """JSON record store + hash-chained receipt journal + metering
+    ledger (event class + count only). Fails closed: a journal that
+    does not verify at load raises."""
+
+    def __init__(self, state_path: str, policies: dict,
+                 adapter_keys: dict):
+        self.state_path = state_path
+        self.policies = policies          # version -> policy object
+        self.adapter_keys = adapter_keys  # dispatch_point_id -> key
+        self.records = {}
+        self.journal = []
+        self.metering = {}
+        if os.path.exists(state_path):
+            with open(state_path, encoding="utf-8") as fh:
+                data = json.load(fh)
+            self.records = data.get("records", {})
+            self.journal = data.get("journal", [])
+            self.metering = data.get("metering", {})
+            ok, _ = self.verify_chain()
+            if not ok:
+                raise ValueError("receipt journal failed verification "
+                                 "at load; store fails closed")
+
+    # ---------------------------------------------------------- io
+    def _save(self):
+        tmp = self.state_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump({"records": self.records,
+                       "journal": self.journal,
+                       "metering": self.metering}, fh,
+                      indent=1, sort_keys=True)
+        os.replace(tmp, self.state_path)
+
+    # --------------------------------------------------- receipts
+    def _append_receipt(self, kind: str, payload: dict) -> dict:
+        prev = self.journal[-1]["record_hash"] if self.journal \
+            else "GENESIS"
+        entry = {"seq": len(self.journal) + 1, "timestamp": _now(),
+                 "kind": kind,
+                 "payload_digest": logic.digest_obj(payload),
+                 "prev_hash": prev}
+        entry["record_hash"] = logic.digest_obj(
+            {k: entry[k] for k in
+             ("seq", "timestamp", "kind", "payload_digest",
+              "prev_hash")})
+        self.journal.append(entry)
+        return entry
+
+    def verify_chain(self, journal=None):
+        journal = self.journal if journal is None else journal
+        prev = "GENESIS"
+        for i, entry in enumerate(journal):
+            if entry.get("prev_hash") != prev:
+                return False, f"link broken at seq {entry.get('seq')}"
+            expect = logic.digest_obj(
+                {k: entry.get(k) for k in
+                 ("seq", "timestamp", "kind", "payload_digest",
+                  "prev_hash")})
+            if entry.get("record_hash") != expect:
+                return False, f"hash mismatch at seq {entry.get('seq')}"
+            prev = entry["record_hash"]
+        return True, prev
+
+    def chain_head(self) -> str:
+        return self.journal[-1]["record_hash"] if self.journal \
+            else "GENESIS"
+
+    # ------------------------------------------------- provenance
+    def _attestation_valid(self, dispatch_point_id, binding_ref,
+                           core: dict, attestation) -> bool:
+        key = self.adapter_keys.get(dispatch_point_id)
+        if not key or not attestation:
+            return False
+        msg = (binding_ref + "|" + logic.canon(core)).encode()
+        expect = hmac.new(key.encode(), msg,
+                          hashlib.sha256).hexdigest()
+        return hmac.compare_digest(expect, attestation)
+
+    @staticmethod
+    def make_attestation(key: str, binding_ref: str,
+                         core: dict) -> str:
+        """The adapter side of the channel: an adapter holding its
+        registered key attests a capture core + binding reference."""
+        msg = (binding_ref + "|" + logic.canon(core)).encode()
+        return hmac.new(key.encode(), msg,
+                        hashlib.sha256).hexdigest()
+
+    # ------------------------------------------------------- seal
+    def seal_dispatch(self, capture: dict) -> dict:
+        """Accept or reject a dispatch capture (RTE-REQ-012) and,
+        on acceptance, seal the bundle and mint its verdict."""
+        core = {k: capture.get(k) for k in
+                ("task_digest", "candidate_set", "selected_target",
+                 "stated_reason", "policy_version",
+                 "dispatch_point_id", "dispatch_timestamp")}
+        provenance_ok = (
+            capture.get("source") == "dispatch-point-adapter"
+            and self._attestation_valid(
+                capture.get("dispatch_point_id"),
+                capture.get("binding_ref"), core,
+                capture.get("adapter_attestation")))
+
+        if not provenance_ok:
+            receipt = self._append_receipt(
+                "capture_rejected",
+                {"dispatch_point_id": capture.get("dispatch_point_id"),
+                 "binding_ref": capture.get("binding_ref"),
+                 "source": capture.get("source"),
+                 "reason": "provenance_failure"})
+            self._save()
+            return {"accepted": False, "verdict": "UNVERIFIABLE",
+                    "reason": "provenance_failure",
+                    "receipt_ref": receipt["record_hash"]}
+
+        policy = self.policies.get(capture.get("policy_version"))
+        absent = capture.get("candidate_set") in (None, "ABSENT")
+        candidates = None if absent else [
+            _reduce_candidate(c) for c in capture["candidate_set"]]
+        selected_cand = None
+        if candidates:
+            for c in candidates:
+                if c["id"] == capture.get("selected_target"):
+                    selected_cand = c
+        bundle = {
+            "task_digest": capture.get("task_digest"),
+            "candidate_set": "ABSENT" if absent else candidates,
+            "selected_target": capture.get("selected_target"),
+            "stated_reason": capture.get("stated_reason"),
+            "policy_version": capture.get("policy_version"),
+            "policy_digest": logic.policy_digest(policy)
+            if policy else None,
+            "dispatch_point_id": capture.get("dispatch_point_id"),
+            "dispatch_timestamp": capture.get("dispatch_timestamp"),
+            "binding_ref": capture.get("binding_ref"),
+        }
+        verdict = logic.evaluate(bundle, policy)
+        seal_id = "rts-" + logic.digest_obj(
+            {**bundle, "binding_ref": bundle["binding_ref"]})[:16]
+        record = {
+            "dispatch_seal_id": seal_id,
+            "task_digest": bundle["task_digest"],
+            "candidate_set": bundle["candidate_set"],
+            "candidate_set_absent": absent,
+            "selected_target": bundle["selected_target"],
+            "stated_reason": bundle["stated_reason"],
+            "policy_version": bundle["policy_version"],
+            "policy_digest": bundle["policy_digest"],
+            "affiliation_flags": {
+                "selected_affiliated":
+                    bool(selected_cand and
+                         selected_cand.get("affiliated", False))},
+            "dispatch_timestamp": bundle["dispatch_timestamp"],
+            "dispatch_point_id": bundle["dispatch_point_id"],
+            "binding_ref": bundle["binding_ref"],
+            "seal": logic.digest_obj(bundle),
+            "verdict": verdict["verdict"],
+            "clause": verdict["clause"],
+            "passed_over_preferred":
+                verdict["passed_over_preferred"],
+            "grammar_version": verdict["grammar_version"],
+            "receipt_ref": None,
+        }
+        receipt = self._append_receipt(
+            "dispatch_seal",
+            {"dispatch_seal_id": seal_id, "seal": record["seal"],
+             "verdict": record["verdict"]})
+        record["receipt_ref"] = receipt["record_hash"]
+        assert set(record.keys()) == set(RECORD_FIELDS)
+        self.records[seal_id] = record
+        if record["verdict"] in METERED_VERDICTS:
+            self.metering["dispatch_seal"] = \
+                self.metering.get("dispatch_seal", 0) + 1
+        self._save()
+        return {"accepted": True, "dispatch_seal_id": seal_id,
+                "receipt_ref": record["receipt_ref"],
+                "verdict": record["verdict"],
+                "clause": record["clause"],
+                "passed_over_preferred":
+                    record["passed_over_preferred"],
+                "grammar_version": record["grammar_version"],
+                "policy_version": record["policy_version"]}
+
+    # ----------------------------------------------------- reads
+    def get_verdict(self, seal_id: str) -> dict:
+        record = self.records.get(seal_id)
+        if record is None:
+            return {"error": "NO_SUCH_SEAL"}
+        return {"dispatch_seal_id": seal_id,
+                "verdict": record["verdict"],
+                "clause": record["clause"],
+                "selected_target": record["selected_target"],
+                "passed_over_preferred":
+                    record["passed_over_preferred"],
+                "grammar_version": record["grammar_version"],
+                "policy_version": record["policy_version"],
+                "receipt_refs": [record["receipt_ref"]]}
+
+    def check(self, seal_id: str) -> dict:
+        """Counterparty view (RTE-REQ-013): verdict class and named
+        clause only."""
+        record = self.records.get(seal_id)
+        if record is None:
+            return {"error": "NO_SUCH_SEAL"}
+        return {"verdict": record["verdict"],
+                "clause": record["clause"]}
+
+    def export_capture(self, seal_id: str) -> dict:
+        record = self.records.get(seal_id)
+        if record is None:
+            return {"error": "NO_SUCH_SEAL"}
+        return {"capture": dict(record),
+                "chain_head": self.chain_head(),
+                "grammar_version": record["grammar_version"],
+                "policy_version": record["policy_version"]}
+
+    # --------------------------------------- after-the-fact guard
+    def attach_candidate_set(self, seal_id: str, candidates) -> dict:
+        """ADV-2 guard: a candidate set reconstructed or supplied
+        after the fact is refused as capture material, and the
+        refusal is receipted (RTE-REQ-011, spec P1). A sealed record
+        is never mutated."""
+        receipt = self._append_receipt(
+            "candidate_set_refused",
+            {"dispatch_seal_id": seal_id,
+             "reason": "after_the_fact_candidate_set"})
+        self._save()
+        return {"accepted": False,
+                "reason": "after_the_fact_candidate_set_refused",
+                "receipt_ref": receipt["record_hash"]}
+
+
+def recompute(capture: dict, grammar_version: str,
+              policy_version: str, policies: dict) -> dict:
+    """Third-party recomputation (RTE-REQ-002(iii)): verdict from
+    the exported capture + the published grammar + the stated
+    policy alone. Reads no service state (RTE-REQ-013)."""
+    if grammar_version != logic.GRAMMAR_VERSION:
+        return {"verdict": "UNVERIFIABLE",
+                "reason": "unknown_grammar_version"}
+    record = capture.get("capture", capture)
+    if record.get("chain_head") is not None:
+        pass  # exports carry the head; verification is the caller's
+    policy = policies.get(policy_version)
+    bundle = {
+        "task_digest": record.get("task_digest"),
+        "candidate_set": record.get("candidate_set"),
+        "selected_target": record.get("selected_target"),
+        "stated_reason": record.get("stated_reason"),
+        "policy_version": record.get("policy_version"),
+        "policy_digest": record.get("policy_digest"),
+        "dispatch_point_id": record.get("dispatch_point_id"),
+        "dispatch_timestamp": record.get("dispatch_timestamp"),
+        "binding_ref": record.get("binding_ref"),
+    }
+    verdict = logic.evaluate(bundle, policy)
+    return {"verdict": verdict["verdict"],
+            "clause": verdict["clause"],
+            "selected_target": verdict["selected_target"],
+            "passed_over_preferred":
+                verdict["passed_over_preferred"],
+            "grammar_version": logic.GRAMMAR_VERSION,
+            "policy_version": policy_version}
+
+
+def load_policies(path: str) -> dict:
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+    return {p["version"]: p for p in data.get("policies", [])}
+
+
+def load_adapter_keys(path: str) -> dict:
+    with open(path, encoding="utf-8") as fh:
+        return json.load(fh).get("adapter_keys", {})
