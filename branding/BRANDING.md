@@ -14,12 +14,7 @@ icon ships only on the owner's per-icon approval.
   `linear-gradient(90deg,#0ff6f7,#00d4ff,#7b2cbf)` for accents and
   wordmarks, never body text · `--text` `#fefefe` · `--muted`
   `#a0aec0`. Dark surfaces only.
-- **Icon:** `icon-candidate.svg` in this folder is a DRAFT
-  CANDIDATE (navigation/route glyph: a dispatch node branching to
-  three candidate nodes, the chosen path sealed with a check ring).
-  It is **NOT APPROVED, NOT shipped, and NOT public** — builds use
-  a plain placeholder; the candidate ships on no surface until the
-  owner approves the Routeseal icon individually.
+- **Icon:** `icon.svg` in this folder is the canonical icon — the v2 candidate **ELECTED by the owner 2026-11-12** (glyph: a dispatch node branching to three candidate nodes, the chosen path sealed with a check ring). Election class **MARGINAL**: 48 px legible · 32 px marginal — the physical in-disc limit, the same class as Monocle's elected note. The election stands on the human-verified renders (`renders-v2.png`); the **formal Icongate check is still owed** when the Icongate tool lands. Earlier candidates (`icon-candidate.svg` v1, `icon-candidate-v2.svg`) are retained in this folder as history.
 - **Splash/launch surfaces:** server identity (`server.json`,
   MCP `serverInfo`) carries the composite name and version.
 - **About/identity surface:** README.md carries the composite

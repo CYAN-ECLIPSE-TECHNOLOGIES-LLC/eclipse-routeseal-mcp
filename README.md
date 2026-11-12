@@ -2,6 +2,10 @@
 
 **Powered by Cyan Eclipse Technologies** — https://cetech.ai
 
+![Cyan Eclipse Routeseal icon](branding/icon.svg)
+
+*Icon: `branding/icon.svg` — owner-elected 2026-11-12 (class MARGINAL: legible at 48 px, marginal at 32 px).*
+
 Routeseal seals the routing decision at the moment of dispatch —
 the task, the candidates the router passed over, the target it
 chose, and the reason it stated. If the choice diverged from your

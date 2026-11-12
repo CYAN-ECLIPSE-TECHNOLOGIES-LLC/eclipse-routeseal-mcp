@@ -21,6 +21,10 @@ PROPRIETARY — CYAN ECLIPSE TECHNOLOGIES LLC · COMPANY INTELLECTUAL PROPERTY
 - **C9 (RTE-REQ-015):** metering charges exactly one op per dispatch seal (AS-DECLARED / DEVIATION); CANDIDATE-SET-ABSENT, UNVERIFIABLE, rejections, recompute, and check never meter; the ledger records event class + count only.
 - **C10 (RTE-REQ-013, RTE-REQ-009):** the MCP tool inventory equals SPEC §4.1 exactly; `routeseal_check` reveals verdict class + named clause only; no §5 banned term appears on any output surface.
 
+## Icon election note — 2026-11-12
+
+The product icon (`branding/icon.svg`, promoted from the v2 candidate) was **elected by the owner 2026-11-12** on the human-verified renders, class MARGINAL (48 px legible · 32 px marginal). The **formal Icongate check is still owed** when the Icongate tool lands — no gate verdict is claimed here.
+
 ## Fences the bench is asked to hold the build to
 
 Buyer-side dispatch-point witnessing only — no claim over any closed platform's internal routing, no motive or intent language anywhere, no cross-operator aggregation surface. Claims stay **bench-pending** until Verity's verdict lands; builder tests are not evidence.
