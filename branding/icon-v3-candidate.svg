@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Cyan Eclipse Routeseal icon — v3 candidate pending owner re-election">
+  <!-- V3 CANDIDATE 2026-11-12 — pending owner re-election; canonical branding/icon.svg remains elected v2 until re-election -->
+  <!-- Size cure: one-line wordmark set in a condensed face at 9.2 units, baseline 50.2; glyph and palette unchanged -->
+  <circle cx="32" cy="32" r="30" fill="#0d1b2a"/>
+  <circle cx="32" cy="32" r="29" fill="none" stroke="#0ff6f7" stroke-width="2"/>
+  <g transform="translate(0 -8.5)">
+    <circle cx="14" cy="32" r="4.5" fill="#0ff6f7"/>
+    <path d="M18.5 32 H28 M28 32 L42 20 M28 32 H44 M28 32 L42 44" stroke="#00d4ff" stroke-width="2.5" fill="none"/>
+    <circle cx="46" cy="19" r="4" fill="none" stroke="#a0aec0" stroke-width="2"/>
+    <circle cx="48" cy="32" r="4.5" fill="#0ff6f7"/>
+    <circle cx="46" cy="45" r="4" fill="none" stroke="#a0aec0" stroke-width="2"/>
+    <path d="M46.2 32 l1.4 1.6 l2.4 -2.8" stroke="#080c14" stroke-width="1.8" fill="none"/>
+  </g>
+  <text x="32" y="50.2" text-anchor="middle" font-family="'Noto Sans Condensed','Arial Narrow','Liberation Sans Narrow',sans-serif" font-weight="700" font-size="9.2" letter-spacing="0" fill="#fefefe">ROUTESEAL</text>
+</svg>
