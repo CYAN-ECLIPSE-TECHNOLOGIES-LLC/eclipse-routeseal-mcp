@@ -152,6 +152,19 @@ class TestLicenceMetering(Base):
             routeseal.Store(self.path, POLICIES, KEYS,
                             licence_gate=gate)
 
+    def test_legacy_counts_become_baseline_not_failure(self):
+        gate = make_gate(self.tmp, FakeClient())
+        st = routeseal.Store(self.path, POLICIES, KEYS,
+                             licence_gate=gate)
+        st.seal_dispatch(captures.capture())
+        os.remove(self.path + ".metering.jsonl")
+        st2 = routeseal.Store(self.path, POLICIES, KEYS,
+                              licence_gate=gate)
+        rec = st2.metering_reconcile()
+        self.assertTrue(rec["reconciled"], rec)
+        self.assertEqual(rec["baseline_by_op"], {"dispatch_seal": 1})
+        self.assertEqual(rec["journal_records"], 0)
+
     def test_reload_reconciles(self):
         gate = make_gate(self.tmp, FakeClient())
         st = routeseal.Store(self.path, POLICIES, KEYS,

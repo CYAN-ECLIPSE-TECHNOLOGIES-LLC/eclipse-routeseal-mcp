@@ -102,6 +102,7 @@ class Store:
         self.records = {}
         self.journal = []
         self.metering = {}
+        self._metering_baseline = {}
         # ETO-44: metering journal (ACT pattern, separate file; it
         # never feeds seals or verdicts). Always written alongside
         # the existing metering counts.
@@ -113,6 +114,8 @@ class Store:
             self.records = data.get("records", {})
             self.journal = data.get("journal", [])
             self.metering = data.get("metering", {})
+            self._metering_baseline = data.get(
+                "metering_baseline", {})
             ok, _ = self.verify_chain()
             if not ok:
                 raise ValueError("receipt journal failed verification "
@@ -132,11 +135,22 @@ class Store:
         if not v["ok"]:
             raise ValueError("metering journal failed verification "
                              "at load; store fails closed")
-        if v["receipts"] and \
-                self.metering_journal.counts_by_op() != self.metering:
-            raise ValueError("metering journal counts disagree with "
-                             "store metering counts at load; store "
-                             "fails closed")
+        journal_counts = self.metering_journal.counts_by_op()
+        for op, n in journal_counts.items():
+            if n > self.metering.get(op, 0) + \
+                    self._metering_baseline.get(op, 0):
+                raise ValueError("metering journal records ops the "
+                                 "store never counted at load; store "
+                                 "fails closed")
+        # Legacy counts predating the journal become its baseline,
+        # persisted at the next save; reconciliation is then exact:
+        # journal + baseline == store counts.
+        for op, n in self.metering.items():
+            short = n - journal_counts.get(op, 0) - \
+                self._metering_baseline.get(op, 0)
+            if short > 0:
+                self._metering_baseline[op] = \
+                    self._metering_baseline.get(op, 0) + short
 
     def _licence_check(self):
         """Returns None when the priced op may proceed, else the
@@ -166,13 +180,18 @@ class Store:
         journal_counts = self.metering_journal.counts_by_op()
         counted = sum(self.metering.values())
         recorded = sum(journal_counts.values())
+        effective = {op: journal_counts.get(op, 0) +
+                     self._metering_baseline.get(op, 0)
+                     for op in set(journal_counts) |
+                     set(self._metering_baseline)}
         return {"ops_counted": counted,
                 "journal_records": recorded,
                 "counted_by_op": dict(self.metering),
                 "journal_by_op": journal_counts,
+                "baseline_by_op": dict(self._metering_baseline),
                 "chain_ok": v["ok"], "chain_head": v.get("head"),
-                "reconciled": bool(v["ok"]) and counted == recorded
-                and journal_counts == self.metering}
+                "reconciled": bool(v["ok"])
+                and effective == self.metering}
 
     @staticmethod
     def _bundle_of(record: dict) -> dict:
@@ -232,8 +251,9 @@ class Store:
         with open(tmp, "w", encoding="utf-8") as fh:
             json.dump({"records": self.records,
                        "journal": self.journal,
-                       "metering": self.metering}, fh,
-                      indent=1, sort_keys=True)
+                       "metering": self.metering,
+                       "metering_baseline": self._metering_baseline},
+                      fh, indent=1, sort_keys=True)
         os.replace(tmp, self.state_path)
 
     # --------------------------------------------------- receipts
