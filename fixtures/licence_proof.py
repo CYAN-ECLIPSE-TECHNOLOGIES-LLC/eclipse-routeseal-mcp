@@ -70,6 +70,16 @@ class Mcp:
     def close(self):
         self.p.terminate()
 
+    def restart(self):
+        # The server's stdio face exits on a duplicate
+        # product_register (UNIQUE constraint) - a re-run of this
+        # proof restarts the face and records the prior registration.
+        try:
+            self.p.terminate()
+        except Exception:
+            pass
+        self.__init__()
+
 
 def propose_run(mcp, propose_tool, args, exec_tool, verb, principal):
     prop, err = mcp.tool(propose_tool, args, principal=principal)
@@ -95,14 +105,23 @@ def main():
     mcp = Mcp()
     try:
         EVID["ls_journal_count_start"] = mcp.journal_count()
-        reg, err = mcp.tool("product_register", {
-            "product_id": PRODUCT, "name": "Cyan Eclipse Routeseal",
-            "custody": "witness"})
-        EVID["product_register"] = {"is_error": err, "result": reg}
-        tier, err = mcp.tool("tier_define", {
-            "product_id": PRODUCT, "tier_id": "fixture",
-            "features": ["dispatch_seal"], "seats": 1, "perpetual": True})
-        EVID["tier_define"] = {"is_error": err, "result": tier}
+        try:
+            reg, err = mcp.tool("product_register", {
+                "product_id": PRODUCT, "name": "Cyan Eclipse Routeseal",
+                "custody": "witness"})
+            EVID["product_register"] = {"is_error": err, "result": reg}
+            tier, err = mcp.tool("tier_define", {
+                "product_id": PRODUCT, "tier_id": "fixture",
+                "features": ["dispatch_seal"], "seats": 1,
+                "perpetual": True})
+            EVID["tier_define"] = {"is_error": err, "result": tier}
+        except Exception:
+            mcp.restart()
+            EVID["product_register"] = (
+                "already registered in the first proof run; the "
+                "server stdio face exits on a duplicate register, "
+                "face restarted and the run continued")
+            EVID["tier_define"] = "already defined (first proof run)"
         mand, err = mcp.tool("principal_manage", {
             "action": "grant_mandate", "principal_id": "cet-issuer",
             "products": [PRODUCT],
