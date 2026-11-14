@@ -44,8 +44,12 @@ DESCRIPTIONS = {
         "only. Unmetered.",
     "routeseal_recompute":
         "Recompute a verdict from an exported capture plus the "
-        "grammar and policy versions, with no service state. "
-        "Unmetered.",
+        "grammar and policy versions, with no service state. The "
+        "record's seal is verified first: the seal is an unkeyed "
+        "digest binding the record's internal consistency, and "
+        "provenance rests on the dispatch-point adapter channel "
+        "at ingestion — a capture whose seal does not verify caps "
+        "at UNVERIFIABLE. Unmetered.",
     "routeseal_export_captures":
         "Export a sealed capture with the receipt chain head and "
         "the grammar and policy versions, for independent "

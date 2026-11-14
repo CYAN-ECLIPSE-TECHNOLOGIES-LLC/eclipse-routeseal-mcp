@@ -65,6 +65,11 @@ METERED_VERDICTS = ("AS-DECLARED", "DEVIATION")  # PC-8: one charge
 # per dispatch seal; CANDIDATE-SET-ABSENT / UNVERIFIABLE never meter
 # (RTE-REQ-015).
 
+SEAL_BASIS = ("The record seal is an unkeyed digest over the "
+              "bundle fields: it binds the record's internal "
+              "consistency only. Provenance rests on the "
+              "dispatch-point adapter channel at ingestion.")
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -370,20 +375,23 @@ def recompute(capture: dict, grammar_version: str,
         return {"verdict": "UNVERIFIABLE",
                 "reason": "unknown_grammar_version"}
     record = capture.get("capture", capture)
-    if record.get("chain_head") is not None:
-        pass  # exports carry the head; verification is the caller's
+    # C6 cure (VERDICT-DELTA-20261113 F2): the record's seal is
+    # verified against its bundle fields BEFORE any verdict is
+    # minted. A fabricated or tampered capture — anything whose
+    # seal does not recompute from the fields it carries — caps at
+    # UNVERIFIABLE on this path exactly as on the ingestion paths.
+    if not Store.record_seal_valid(record):
+        return {"verdict": "UNVERIFIABLE",
+                "reason": "seal_verification_failed",
+                "seal_basis": SEAL_BASIS}
+    seal_id = record.get("dispatch_seal_id")
+    if seal_id is not None and \
+            seal_id != "rts-" + record["seal"][:16]:
+        return {"verdict": "UNVERIFIABLE",
+                "reason": "seal_verification_failed",
+                "seal_basis": SEAL_BASIS}
     policy = policies.get(policy_version)
-    bundle = {
-        "task_digest": record.get("task_digest"),
-        "candidate_set": record.get("candidate_set"),
-        "selected_target": record.get("selected_target"),
-        "stated_reason": record.get("stated_reason"),
-        "policy_version": record.get("policy_version"),
-        "policy_digest": record.get("policy_digest"),
-        "dispatch_point_id": record.get("dispatch_point_id"),
-        "dispatch_timestamp": record.get("dispatch_timestamp"),
-        "binding_ref": record.get("binding_ref"),
-    }
+    bundle = Store._bundle_of(record)
     verdict = logic.evaluate(bundle, policy)
     return {"verdict": verdict["verdict"],
             "clause": verdict["clause"],
@@ -391,7 +399,8 @@ def recompute(capture: dict, grammar_version: str,
             "passed_over_preferred":
                 verdict["passed_over_preferred"],
             "grammar_version": logic.GRAMMAR_VERSION,
-            "policy_version": policy_version}
+            "policy_version": policy_version,
+            "seal_basis": SEAL_BASIS}
 
 
 def load_policies(path: str) -> dict:

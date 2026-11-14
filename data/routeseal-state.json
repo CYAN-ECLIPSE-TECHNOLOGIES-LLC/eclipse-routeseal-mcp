@@ -15,10 +15,18 @@
    "record_hash": "c1bbc2511ac1e42b33ed42183444b062f0a05d5a0cfa0704af96ff8147a833dc",
    "seq": 2,
    "timestamp": "2026-11-14T00:40:29Z"
+  },
+  {
+   "kind": "dispatch_seal",
+   "payload_digest": "a402dd881d1fcb3800cafe19a6b498ffeab399395cba66e820c43e4bdb3a4c81",
+   "prev_hash": "c1bbc2511ac1e42b33ed42183444b062f0a05d5a0cfa0704af96ff8147a833dc",
+   "record_hash": "d281917dab5a7dce94fbed195208796f0c79076e3daeacfb09132685536f4af7",
+   "seq": 3,
+   "timestamp": "2026-11-14T00:41:07Z"
   }
  ],
  "metering": {
-  "dispatch_seal": 2
+  "dispatch_seal": 3
  },
  "records": {
   "rts-e6cb56d2f7828ab2": {
@@ -64,7 +72,7 @@
    "passed_over_preferred": "alpha",
    "policy_digest": "10241865919dcb74852c5356ea245f9cc21aa46b792c80fdbb51283ed47d6802",
    "policy_version": "op-policy/1",
-   "receipt_ref": "c1bbc2511ac1e42b33ed42183444b062f0a05d5a0cfa0704af96ff8147a833dc",
+   "receipt_ref": "d281917dab5a7dce94fbed195208796f0c79076e3daeacfb09132685536f4af7",
    "seal": "e6cb56d2f7828ab26bb653c8ef42beb5c7a4a0a4a191cee7e26c7cd3b55d4af3",
    "selected_target": "beta",
    "stated_reason": "best fit per stated policy",

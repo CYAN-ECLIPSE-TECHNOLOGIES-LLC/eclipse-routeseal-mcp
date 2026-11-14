@@ -220,6 +220,48 @@ class TestRecompute(Base):
                                     "op-policy/1", POLICIES)
         self.assertEqual(fresh["verdict"], "CANDIDATE-SET-ABSENT")
 
+    def test_recompute_fabricated_capture_unverifiable(self):
+        """C6 cure (VERDICT-DELTA-20261113 F2): a fabricated,
+        never-sealed capture dict mints no verdict on the
+        recompute path — it caps at UNVERIFIABLE."""
+        fabricated = {
+            "task_digest": "sha256:" + "ab" * 32,
+            "candidate_set": captures.CANDIDATES,
+            "selected_target": "beta",
+            "stated_reason": "best fit per stated policy",
+            "policy_version": "op-policy/1",
+            "policy_digest": logic.policy_digest(
+                POLICIES["op-policy/1"]),
+            "dispatch_point_id": "dp-alpha",
+            "dispatch_timestamp": "2026-11-11T12:00:00Z",
+            "binding_ref": "evt-fabricated",
+            "seal": "00" * 32,
+            "verdict": "DEVIATION",
+        }
+        fresh = routeseal.recompute(fabricated, logic.GRAMMAR_VERSION,
+                                    "op-policy/1", POLICIES)
+        self.assertEqual(fresh["verdict"], "UNVERIFIABLE")
+        self.assertEqual(fresh["reason"], "seal_verification_failed")
+
+    def test_recompute_tampered_export_unverifiable(self):
+        """A genuine export with one bundle field flipped after
+        sealing no longer recomputes to its minted verdict."""
+        out = self.seal(selected="beta", binding="evt-rc5")
+        export = self.store.export_capture(out["dispatch_seal_id"])
+        export["capture"]["selected_target"] = "alpha"
+        fresh = routeseal.recompute(export, logic.GRAMMAR_VERSION,
+                                    "op-policy/1", POLICIES)
+        self.assertEqual(fresh["verdict"], "UNVERIFIABLE")
+        self.assertEqual(fresh["reason"], "seal_verification_failed")
+
+    def test_recompute_unsealed_record_unverifiable(self):
+        out = self.seal(selected="beta", binding="evt-rc6")
+        export = self.store.export_capture(out["dispatch_seal_id"])
+        del export["capture"]["seal"]
+        fresh = routeseal.recompute(export, logic.GRAMMAR_VERSION,
+                                    "op-policy/1", POLICIES)
+        self.assertEqual(fresh["verdict"], "UNVERIFIABLE")
+
 
 class TestCustody(Base):
     """RTE-REQ-005 / RT-B4: the store contains only the section 2
