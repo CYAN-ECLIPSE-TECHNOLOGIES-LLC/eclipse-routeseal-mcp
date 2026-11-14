@@ -1,0 +1,75 @@
+{
+ "journal": [
+  {
+   "kind": "dispatch_seal",
+   "payload_digest": "a402dd881d1fcb3800cafe19a6b498ffeab399395cba66e820c43e4bdb3a4c81",
+   "prev_hash": "GENESIS",
+   "record_hash": "42ab2c5418dfd63f223218b026f5f9d2c78bfda3abe41d4296a002d9e1e78218",
+   "seq": 1,
+   "timestamp": "2026-11-14T00:40:00Z"
+  },
+  {
+   "kind": "dispatch_seal",
+   "payload_digest": "a402dd881d1fcb3800cafe19a6b498ffeab399395cba66e820c43e4bdb3a4c81",
+   "prev_hash": "42ab2c5418dfd63f223218b026f5f9d2c78bfda3abe41d4296a002d9e1e78218",
+   "record_hash": "c1bbc2511ac1e42b33ed42183444b062f0a05d5a0cfa0704af96ff8147a833dc",
+   "seq": 2,
+   "timestamp": "2026-11-14T00:40:29Z"
+  }
+ ],
+ "metering": {
+  "dispatch_seal": 2
+ },
+ "records": {
+  "rts-e6cb56d2f7828ab2": {
+   "affiliation_flags": {
+    "selected_affiliated": true
+   },
+   "binding_ref": "evt-mcp1",
+   "candidate_set": [
+    {
+     "affiliated": false,
+     "capabilities": [
+      "code"
+     ],
+     "cost": 4.0,
+     "id": "alpha",
+     "latency_ms": 120
+    },
+    {
+     "affiliated": true,
+     "capabilities": [
+      "code"
+     ],
+     "cost": 3.0,
+     "id": "beta",
+     "latency_ms": 90
+    },
+    {
+     "affiliated": false,
+     "capabilities": [
+      "chat"
+     ],
+     "cost": 2.0,
+     "id": "gamma",
+     "latency_ms": 60
+    }
+   ],
+   "candidate_set_absent": false,
+   "clause": "preference_order",
+   "dispatch_point_id": "dp-alpha",
+   "dispatch_seal_id": "rts-e6cb56d2f7828ab2",
+   "dispatch_timestamp": "2026-11-11T12:00:00Z",
+   "grammar_version": "routeseal-grammar/1",
+   "passed_over_preferred": "alpha",
+   "policy_digest": "10241865919dcb74852c5356ea245f9cc21aa46b792c80fdbb51283ed47d6802",
+   "policy_version": "op-policy/1",
+   "receipt_ref": "c1bbc2511ac1e42b33ed42183444b062f0a05d5a0cfa0704af96ff8147a833dc",
+   "seal": "e6cb56d2f7828ab26bb653c8ef42beb5c7a4a0a4a191cee7e26c7cd3b55d4af3",
+   "selected_target": "beta",
+   "stated_reason": "best fit per stated policy",
+   "task_digest": "sha256:abababababababababababababababababababababababababababababababab",
+   "verdict": "DEVIATION"
+  }
+ }
+}

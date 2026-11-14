@@ -78,7 +78,8 @@ def _reduce_candidate(cand: dict) -> dict:
 class Store:
     """JSON record store + hash-chained receipt journal + metering
     ledger (event class + count only). Fails closed: a journal that
-    does not verify at load raises."""
+    does not verify at load raises, and so does any record that
+    disagrees with its own seal or its seal receipt."""
 
     def __init__(self, state_path: str, policies: dict,
                  adapter_keys: dict):
@@ -98,6 +99,59 @@ class Store:
             if not ok:
                 raise ValueError("receipt journal failed verification "
                                  "at load; store fails closed")
+            self._verify_records()
+
+    @staticmethod
+    def _bundle_of(record: dict) -> dict:
+        """The seal bundle (SPEC section 2) rebuilt from a stored
+        record's own fields — the exact dict the record's seal
+        digests at mint time."""
+        return {
+            "task_digest": record.get("task_digest"),
+            "candidate_set": record.get("candidate_set"),
+            "selected_target": record.get("selected_target"),
+            "stated_reason": record.get("stated_reason"),
+            "policy_version": record.get("policy_version"),
+            "policy_digest": record.get("policy_digest"),
+            "dispatch_point_id": record.get("dispatch_point_id"),
+            "dispatch_timestamp": record.get("dispatch_timestamp"),
+            "binding_ref": record.get("binding_ref"),
+        }
+
+    @classmethod
+    def record_seal_valid(cls, record: dict) -> bool:
+        """A record's seal is an unkeyed digest over its bundle
+        fields; it binds the record's internal consistency (any
+        post-seal edit to a bundle field breaks it). Provenance
+        rests on the adapter channel at ingestion, not on the
+        seal."""
+        return logic.digest_obj(cls._bundle_of(record)) == \
+            record.get("seal")
+
+    def _verify_records(self):
+        """C8 cure (VERDICT-DELTA-20261113 F1): journal
+        self-consistency is not enough. Every stored record must
+        agree with its own seal AND with the payload_digest of the
+        dispatch_seal receipt its receipt_ref names (the receipt
+        payload covers seal + verdict). Any mismatch fails closed
+        at load — a tampered record is never served."""
+        by_hash = {e.get("record_hash"): e for e in self.journal}
+        for seal_id, record in self.records.items():
+            if not self.record_seal_valid(record):
+                raise ValueError(
+                    "record seal verification failed at load for "
+                    f"{seal_id}; store fails closed")
+            receipt = by_hash.get(record.get("receipt_ref"))
+            payload = {"dispatch_seal_id": seal_id,
+                       "seal": record.get("seal"),
+                       "verdict": record.get("verdict")}
+            if receipt is None \
+                    or receipt.get("kind") != "dispatch_seal" \
+                    or receipt.get("payload_digest") != \
+                    logic.digest_obj(payload):
+                raise ValueError(
+                    "record/receipt binding failed at load for "
+                    f"{seal_id}; store fails closed")
 
     # ---------------------------------------------------------- io
     def _save(self):

@@ -306,6 +306,49 @@ class TestReceiptChain(Base):
             routeseal.Store(self.path, POLICIES, KEYS)
 
 
+class TestRecordTamperRefusal(Base):
+    """C8 cure (VERDICT-DELTA-20261113 F1) / QA-PATTERNS P6 shape:
+    a store record tampered in the state file is refused at load —
+    never loaded silently, never served. At load each record must
+    agree with its own seal and with the payload_digest of the
+    dispatch_seal receipt its receipt_ref names."""
+
+    def _tamper(self, seal_id, field, value):
+        with open(self.path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        data["records"][seal_id][field] = value
+        with open(self.path, "w", encoding="utf-8") as fh:
+            json.dump(data, fh)
+
+    def test_tampered_verdict_field_refused_at_load(self):
+        out = self.seal(selected="beta", binding="evt-t1")
+        self.assertEqual(out["verdict"], "DEVIATION")
+        self._tamper(out["dispatch_seal_id"], "verdict",
+                     "AS-DECLARED")
+        with self.assertRaises(ValueError):
+            routeseal.Store(self.path, POLICIES, KEYS)
+
+    def test_tampered_bundle_field_refused_at_load(self):
+        out = self.seal(selected="beta", binding="evt-t2")
+        self._tamper(out["dispatch_seal_id"], "selected_target",
+                     "alpha")
+        with self.assertRaises(ValueError):
+            routeseal.Store(self.path, POLICIES, KEYS)
+
+    def test_tampered_seal_field_refused_at_load(self):
+        out = self.seal(binding="evt-t3")
+        self._tamper(out["dispatch_seal_id"], "seal", "00" * 32)
+        with self.assertRaises(ValueError):
+            routeseal.Store(self.path, POLICIES, KEYS)
+
+    def test_genuine_store_reloads_and_serves(self):
+        out = self.seal(selected="beta", binding="evt-t4")
+        store2 = routeseal.Store(self.path, POLICIES, KEYS)
+        served = store2.get_verdict(out["dispatch_seal_id"])
+        self.assertEqual(served["verdict"], "DEVIATION")
+        self.assertEqual(served["clause"], "preference_order")
+
+
 class TestMetering(Base):
     """RTE-REQ-015 / spec 4.3: one charge per dispatch seal;
     CANDIDATE-SET-ABSENT and UNVERIFIABLE never meter; recompute
