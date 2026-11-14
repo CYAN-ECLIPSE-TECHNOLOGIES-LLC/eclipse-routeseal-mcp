@@ -273,6 +273,22 @@ class Store:
         verdict = logic.evaluate(bundle, policy)
         seal_id = "rts-" + logic.digest_obj(
             {**bundle, "binding_ref": bundle["binding_ref"]})[:16]
+        existing = self.records.get(seal_id)
+        if existing is not None:
+            # C9 / RTE-REQ-014 cure (VERDICT-DELTA-20261113 F3):
+            # idempotent seal — a replay of the identical capture
+            # returns the existing record. No second receipt, no
+            # second meter event: one dispatch, one seal, one op.
+            return {"accepted": True,
+                    "dispatch_seal_id": seal_id,
+                    "receipt_ref": existing["receipt_ref"],
+                    "verdict": existing["verdict"],
+                    "clause": existing["clause"],
+                    "passed_over_preferred":
+                        existing["passed_over_preferred"],
+                    "grammar_version": existing["grammar_version"],
+                    "policy_version": existing["policy_version"],
+                    "idempotent_replay": True}
         record = {
             "dispatch_seal_id": seal_id,
             "task_digest": bundle["task_digest"],

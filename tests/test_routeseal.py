@@ -406,6 +406,43 @@ class TestMetering(Base):
         self.assertEqual(self.store.metering,
                          {"dispatch_seal": 2})
 
+    def test_replay_is_idempotent(self):
+        """C9 + RTE-REQ-014 cure (VERDICT-DELTA-20261113 F3):
+        re-submitting the identical capture returns the existing
+        record — exactly one dispatch_seal receipt and exactly one
+        metered op per dispatch seal."""
+        cap = captures.capture(selected="beta", binding="evt-rp1")
+        first = self.store.seal_dispatch(cap)
+        second = self.store.seal_dispatch(dict(cap))
+        self.assertEqual(second["dispatch_seal_id"],
+                         first["dispatch_seal_id"])
+        self.assertEqual(second["receipt_ref"],
+                         first["receipt_ref"])
+        self.assertTrue(second["idempotent_replay"])
+        receipts = [e for e in self.store.journal
+                    if e["kind"] == "dispatch_seal"]
+        self.assertEqual(len(receipts), 1)
+        self.assertEqual(self.store.metering, {"dispatch_seal": 1})
+        self.assertEqual(len(self.store.records), 1)
+
+    def test_replay_of_absent_capture_idempotent(self):
+        cap = captures.capture(candidates="ABSENT",
+                               binding="evt-rp2")
+        self.store.seal_dispatch(cap)
+        self.store.seal_dispatch(dict(cap))
+        receipts = [e for e in self.store.journal
+                    if e["kind"] == "dispatch_seal"]
+        self.assertEqual(len(receipts), 1)
+        self.assertEqual(self.store.metering, {})
+
+    def test_distinct_captures_still_seal_separately(self):
+        self.seal(selected="beta", binding="evt-rp3")
+        self.seal(selected="beta", binding="evt-rp4")
+        receipts = [e for e in self.store.journal
+                    if e["kind"] == "dispatch_seal"]
+        self.assertEqual(len(receipts), 2)
+        self.assertEqual(self.store.metering, {"dispatch_seal": 2})
+
     def test_ledger_records_class_and_count_only(self):
         self.seal(binding="evt-m5")
         self.assertEqual(set(self.store.metering.keys()),
