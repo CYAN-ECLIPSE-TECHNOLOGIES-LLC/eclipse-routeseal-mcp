@@ -34,6 +34,8 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import logic  # noqa: E402
+import metering_journal as _mj  # noqa: E402
+from licence_gate import LicenceGate  # noqa: E402
 
 TOOL_VERSION = "0.1.0"
 SERVER_ID = "eclipse-routeseal"
@@ -87,13 +89,24 @@ class Store:
     disagrees with its own seal or its seal receipt."""
 
     def __init__(self, state_path: str, policies: dict,
-                 adapter_keys: dict):
+                 adapter_keys: dict, licence_gate=None,
+                 metering_journal_path: str = None):
         self.state_path = state_path
         self.policies = policies          # version -> policy object
         self.adapter_keys = adapter_keys  # dispatch_point_id -> key
+        # ETO-44: licence gate (None = unconfigured fixture mode, the
+        # ACT core pattern; server.py wires a gate whenever a licence
+        # state is configured or ROUTESEAL_LICENCE_REQUIRED=1).
+        self.licence_gate = licence_gate
+        self._last_licence_state = None
         self.records = {}
         self.journal = []
         self.metering = {}
+        # ETO-44: metering journal (ACT pattern, separate file; it
+        # never feeds seals or verdicts). Always written alongside
+        # the existing metering counts.
+        self.metering_journal = _mj.MeteringJournal(
+            metering_journal_path or (state_path + ".metering.jsonl"))
         if os.path.exists(state_path):
             with open(state_path, encoding="utf-8") as fh:
                 data = json.load(fh)
@@ -105,6 +118,61 @@ class Store:
                 raise ValueError("receipt journal failed verification "
                                  "at load; store fails closed")
             self._verify_records()
+            self._verify_metering_journal()
+
+    # ------------------------------------------------- ETO-44 leg
+    def _verify_metering_journal(self):
+        """A metering journal that does not verify, or whose counts
+        disagree with the store's metering counts, fails closed at
+        load (same posture as the seal journal). A state file from
+        before ETO-44 has counts but no journal file: the journal
+        starts empty and reconciliation is reported, not enforced,
+        for that legacy case (journal record count 0)."""
+        v = self.metering_journal.verify()
+        if not v["ok"]:
+            raise ValueError("metering journal failed verification "
+                             "at load; store fails closed")
+        if v["receipts"] and \
+                self.metering_journal.counts_by_op() != self.metering:
+            raise ValueError("metering journal counts disagree with "
+                             "store metering counts at load; store "
+                             "fails closed")
+
+    def _licence_check(self):
+        """Returns None when the priced op may proceed, else the
+        refusal dict. No record, receipt or metering entry is made
+        for a licence refusal."""
+        if self.licence_gate is None:
+            self._last_licence_state = "UNCONFIGURED_FIXTURE"
+            return None
+        allowed, state = self.licence_gate.check()
+        self._last_licence_state = state
+        if allowed:
+            return None
+        return {"accepted": False, "error": state,
+                "licence_state": state,
+                "reason": "licence_gate_refused"}
+
+    def _meter(self, op: str, subject: str):
+        self.metering[op] = self.metering.get(op, 0) + 1
+        self.metering_journal.append(subject, {
+            "product": "routeseal", "op": op, "subject": subject,
+            "unit_price_minor": 25, "currency": "USD",
+            "fixture": True,
+            "licence_state": self._last_licence_state})
+
+    def metering_reconcile(self) -> dict:
+        v = self.metering_journal.verify()
+        journal_counts = self.metering_journal.counts_by_op()
+        counted = sum(self.metering.values())
+        recorded = sum(journal_counts.values())
+        return {"ops_counted": counted,
+                "journal_records": recorded,
+                "counted_by_op": dict(self.metering),
+                "journal_by_op": journal_counts,
+                "chain_ok": v["ok"], "chain_head": v.get("head"),
+                "reconciled": bool(v["ok"]) and counted == recorded
+                and journal_counts == self.metering}
 
     @staticmethod
     def _bundle_of(record: dict) -> dict:
@@ -226,6 +294,9 @@ class Store:
     def seal_dispatch(self, capture: dict) -> dict:
         """Accept or reject a dispatch capture (RTE-REQ-012) and,
         on acceptance, seal the bundle and mint its verdict."""
+        refusal = self._licence_check()  # ETO-44 priced boundary
+        if refusal is not None:
+            return refusal
         core = {k: capture.get(k) for k in
                 ("task_digest", "candidate_set", "selected_target",
                  "stated_reason", "policy_version",
@@ -321,8 +392,7 @@ class Store:
         assert set(record.keys()) == set(RECORD_FIELDS)
         self.records[seal_id] = record
         if record["verdict"] in METERED_VERDICTS:
-            self.metering["dispatch_seal"] = \
-                self.metering.get("dispatch_seal", 0) + 1
+            self._meter("dispatch_seal", seal_id)
         self._save()
         return {"accepted": True, "dispatch_seal_id": seal_id,
                 "receipt_ref": record["receipt_ref"],

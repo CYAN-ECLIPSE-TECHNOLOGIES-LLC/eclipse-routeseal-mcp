@@ -14,6 +14,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import routeseal  # noqa: E402
+from licence_gate import LicenceGate  # noqa: E402
 
 SERVER_NAME = "eclipse-routeseal"
 SERVER_VERSION = routeseal.TOOL_VERSION
@@ -112,8 +113,21 @@ def store() -> routeseal.Store:
             os.path.join(base, "keys", "adapter-keys.json"))
         global _policies
         _policies = routeseal.load_policies(policies_path)
+        # ETO-44: wire the licence gate whenever a licence state is
+        # configured or enforcement is required by the deployment.
+        # Unconfigured = fixture mode (gate absent, metering journal
+        # still written); configured/required = priced ops check the
+        # deployed License Server and are refused without a valid
+        # licence (LICENSE_NOT_CONFIGURED when no state file).
+        gate = None
+        if os.environ.get("ROUTESEAL_LICENCE_STATE") or \
+                os.environ.get("ROUTESEAL_LICENCE_REQUIRED") == "1":
+            gate = LicenceGate()
+            print(f"routeseal licence gate mode: {gate.mode}",
+                  file=sys.stderr)
         _store = routeseal.Store(
-            state, _policies, routeseal.load_adapter_keys(keys_path))
+            state, _policies, routeseal.load_adapter_keys(keys_path),
+            licence_gate=gate)
     return _store
 
 
