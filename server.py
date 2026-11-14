@@ -182,7 +182,18 @@ def main():
             msg = json.loads(line)
         except json.JSONDecodeError:
             continue
-        result = handle(msg)
+        try:
+            result = handle(msg)
+        except Exception:
+            # K4 house guard (ETO-54): a handler fault is a named
+            # refusal, never a crash; no exception text surfaces.
+            if isinstance(msg, dict) and "id" in msg:
+                sys.stdout.write(json.dumps(
+                    {"jsonrpc": "2.0", "id": msg["id"], "error": {
+                        "code": -32602,
+                        "message": "MALFORMED_CONTAINER: argument 'request'"}}) + "\n")
+                sys.stdout.flush()
+            continue
         if result is not None and "id" in msg:
             sys.stdout.write(json.dumps(
                 {"jsonrpc": "2.0", "id": msg["id"],

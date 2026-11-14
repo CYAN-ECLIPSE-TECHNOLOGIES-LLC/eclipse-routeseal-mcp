@@ -109,4 +109,4 @@ class LicenceGate:
             state = r.get("state", "LICENSE_UNKNOWN")
             return state in PAID_STATES, state
         except Exception as exc:
-            return False, f"LICENSE_SERVER_UNREACHABLE:{type(exc).__name__}"
+            return False, "LICENSE_SERVER_UNREACHABLE"
