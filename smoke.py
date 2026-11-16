@@ -34,7 +34,11 @@ def call(proc, mid, name, args):
 def main():
     tmp = tempfile.mkdtemp()
     env = dict(os.environ,
-               ECLIPSE_ROUTESEAL_STATE=os.path.join(tmp, "s.json"))
+               ECLIPSE_ROUTESEAL_STATE=os.path.join(tmp, "s.json"),
+               # F-ETO44-2: the server face is licence-gated by
+               # default; the smoke runs ungated only via the
+               # explicit fixture bypass opt-in.
+               ROUTESEAL_LICENCE_FIXTURE_BYPASS="1")
     proc = subprocess.Popen(
         [sys.executable, os.path.join(HERE, "server.py")],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE,

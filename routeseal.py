@@ -94,9 +94,10 @@ class Store:
         self.state_path = state_path
         self.policies = policies          # version -> policy object
         self.adapter_keys = adapter_keys  # dispatch_point_id -> key
-        # ETO-44: licence gate (None = unconfigured fixture mode, the
-        # ACT core pattern; server.py wires a gate whenever a licence
-        # state is configured or ROUTESEAL_LICENCE_REQUIRED=1).
+        # ETO-44: licence gate. None is a tests-only mode: the
+        # shipped server face wires a gate unconditionally
+        # (F-ETO44-2 cure), with gate-absent reachable only via the
+        # explicit ROUTESEAL_LICENCE_FIXTURE_BYPASS=1 opt-in.
         self.licence_gate = licence_gate
         self._last_licence_state = None
         self.records = {}

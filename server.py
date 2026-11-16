@@ -113,15 +113,22 @@ def store() -> routeseal.Store:
             os.path.join(base, "keys", "adapter-keys.json"))
         global _policies
         _policies = routeseal.load_policies(policies_path)
-        # ETO-44: wire the licence gate whenever a licence state is
-        # configured or enforcement is required by the deployment.
-        # Unconfigured = fixture mode (gate absent, metering journal
-        # still written); configured/required = priced ops check the
-        # deployed License Server and are refused without a valid
-        # licence (LICENSE_NOT_CONFIGURED when no state file).
-        gate = None
-        if os.environ.get("ROUTESEAL_LICENCE_STATE") or \
-                os.environ.get("ROUTESEAL_LICENCE_REQUIRED") == "1":
+        # F-ETO44-2 cure (VERDICT-DELTA-ROUTESEAL-ETO44-20261114):
+        # the licence gate is wired UNCONDITIONALLY at the server
+        # face, the ACT posture — an unconfigured deployment refuses
+        # priced ops with LICENSE_NOT_CONFIGURED; it never runs
+        # gate-absent by default. The only gate-absent path is the
+        # explicit, non-default fixture opt-in
+        # ROUTESEAL_LICENCE_FIXTURE_BYPASS=1, named on stderr.
+        # (Store-level gate=None remains for tests only.)
+        if os.environ.get("ROUTESEAL_LICENCE_FIXTURE_BYPASS") == "1":
+            gate = None
+            print("routeseal licence gate: FIXTURE BYPASS "
+                  "(explicit opt-in "
+                  "ROUTESEAL_LICENCE_FIXTURE_BYPASS=1); priced ops "
+                  "are UNGATED in this process",
+                  file=sys.stderr)
+        else:
             gate = LicenceGate()
             print(f"routeseal licence gate mode: {gate.mode}",
                   file=sys.stderr)
