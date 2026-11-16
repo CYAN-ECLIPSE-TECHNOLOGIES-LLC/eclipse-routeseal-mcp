@@ -103,6 +103,11 @@ class Store:
         self.journal = []
         self.metering = {}
         self._metering_baseline = {}
+        # F-ETO44-1 cure: the metering journal's chain head and
+        # record count as persisted in the state file at the last
+        # save (None = no head ever recorded: pre-cure state).
+        self._metering_head_recorded = None
+        self._metering_records_recorded = None
         # ETO-44: metering journal (ACT pattern, separate file; it
         # never feeds seals or verdicts). Always written alongside
         # the existing metering counts.
@@ -116,6 +121,9 @@ class Store:
             self.metering = data.get("metering", {})
             self._metering_baseline = data.get(
                 "metering_baseline", {})
+            self._metering_head_recorded = data.get("metering_head")
+            self._metering_records_recorded = data.get(
+                "metering_records")
             ok, _ = self.verify_chain()
             if not ok:
                 raise ValueError("receipt journal failed verification "
@@ -127,24 +135,71 @@ class Store:
     def _verify_metering_journal(self):
         """A metering journal that does not verify, or whose counts
         disagree with the store's metering counts, fails closed at
-        load (same posture as the seal journal). A state file from
-        before ETO-44 has counts but no journal file: the journal
-        starts empty and reconciliation is reported, not enforced,
-        for that legacy case (journal record count 0)."""
+        load (same posture as the seal journal).
+
+        F-ETO44-1 cure (VERDICT-DELTA-ROUTESEAL-ETO44-20261114):
+        the state file persists the metering chain head and record
+        count at every save. Once a head/count has been recorded,
+        ANY mismatch at load fails closed — a truncated journal, a
+        deleted journal, and a state-file count inflated against
+        the journal are all refusals, never silent re-baselines.
+
+        Migration, exactly once: a state carrying NO recorded head
+        is pre-cure. If its journal file holds records, the counts
+        must already reconcile exactly (journal + persisted
+        baseline == store counts) — no baseline is invented for
+        journal-era ops, so a pre-cure journal truncated before
+        migration still fails closed; the journal's head/count are
+        adopted at the next save. Only a state with counts and NO
+        journal records at all is the genuine pre-ETO-44 legacy
+        case: its shortfall becomes the persisted baseline."""
         v = self.metering_journal.verify()
         if not v["ok"]:
             raise ValueError("metering journal failed verification "
                              "at load; store fails closed")
         journal_counts = self.metering_journal.counts_by_op()
+        journal_records = sum(journal_counts.values())
         for op, n in journal_counts.items():
             if n > self.metering.get(op, 0) + \
                     self._metering_baseline.get(op, 0):
                 raise ValueError("metering journal records ops the "
                                  "store never counted at load; store "
                                  "fails closed")
-        # Legacy counts predating the journal become its baseline,
-        # persisted at the next save; reconciliation is then exact:
-        # journal + baseline == store counts.
+        if self._metering_records_recorded is not None:
+            # Recorded-head state: exact reconciliation only.
+            if journal_records != self._metering_records_recorded \
+                    or v.get("head") != \
+                    self._metering_head_recorded:
+                raise ValueError(
+                    "metering journal head/count disagree with "
+                    "the state file's recorded metering head/count "
+                    "at load; store fails closed")
+            for op in set(self.metering) | set(journal_counts) | \
+                    set(self._metering_baseline):
+                if journal_counts.get(op, 0) + \
+                        self._metering_baseline.get(op, 0) != \
+                        self.metering.get(op, 0):
+                    raise ValueError(
+                        "metering counts disagree with metering "
+                        "journal + baseline at load; store fails "
+                        "closed")
+            return
+        if journal_records > 0:
+            # Pre-cure state with a journal: exact reconciliation
+            # or refusal — no baseline adoption for journal-era ops.
+            for op in set(self.metering) | set(journal_counts) | \
+                    set(self._metering_baseline):
+                if journal_counts.get(op, 0) + \
+                        self._metering_baseline.get(op, 0) != \
+                        self.metering.get(op, 0):
+                    raise ValueError(
+                        "pre-cure metering journal does not "
+                        "reconcile exactly with store counts at "
+                        "load; store fails closed")
+            return
+        # Genuine legacy counts predating the journal become its
+        # baseline, persisted at the next save; reconciliation is
+        # then exact: journal + baseline == store counts.
         for op, n in self.metering.items():
             short = n - journal_counts.get(op, 0) - \
                 self._metering_baseline.get(op, 0)
@@ -184,14 +239,20 @@ class Store:
                      self._metering_baseline.get(op, 0)
                      for op in set(journal_counts) |
                      set(self._metering_baseline)}
+        recorded_ok = (
+            self._metering_records_recorded is None
+            or (recorded == self._metering_records_recorded
+                and v.get("head") == self._metering_head_recorded))
         return {"ops_counted": counted,
                 "journal_records": recorded,
                 "counted_by_op": dict(self.metering),
                 "journal_by_op": journal_counts,
                 "baseline_by_op": dict(self._metering_baseline),
+                "recorded_head": self._metering_head_recorded,
+                "recorded_records": self._metering_records_recorded,
                 "chain_ok": v["ok"], "chain_head": v.get("head"),
                 "reconciled": bool(v["ok"])
-                and effective == self.metering}
+                and effective == self.metering and recorded_ok}
 
     @staticmethod
     def _bundle_of(record: dict) -> dict:
@@ -252,9 +313,13 @@ class Store:
             json.dump({"records": self.records,
                        "journal": self.journal,
                        "metering": self.metering,
-                       "metering_baseline": self._metering_baseline},
+                       "metering_baseline": self._metering_baseline,
+                       "metering_head": self.metering_journal.head,
+                       "metering_records": self.metering_journal.seq},
                       fh, indent=1, sort_keys=True)
         os.replace(tmp, self.state_path)
+        self._metering_head_recorded = self.metering_journal.head
+        self._metering_records_recorded = self.metering_journal.seq
 
     # --------------------------------------------------- receipts
     def _append_receipt(self, kind: str, payload: dict) -> dict:

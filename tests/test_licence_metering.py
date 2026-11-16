@@ -152,11 +152,34 @@ class TestLicenceMetering(Base):
             routeseal.Store(self.path, POLICIES, KEYS,
                             licence_gate=gate)
 
-    def test_legacy_counts_become_baseline_not_failure(self):
+    def test_post_eto44_journal_deletion_fails_closed(self):
+        # F-ETO44-1 cure: this test previously expected a deleted
+        # post-ETO-44 journal to be absorbed into the baseline —
+        # the exact behaviour VERDICT-DELTA-ROUTESEAL-ETO44-
+        # 20261114 ruled an M5 failure. It now pins the cure.
         gate = make_gate(self.tmp, FakeClient())
         st = routeseal.Store(self.path, POLICIES, KEYS,
                              licence_gate=gate)
         st.seal_dispatch(captures.capture())
+        os.remove(self.path + ".metering.jsonl")
+        with self.assertRaises(ValueError):
+            routeseal.Store(self.path, POLICIES, KEYS,
+                            licence_gate=gate)
+
+    def test_legacy_counts_become_baseline_not_failure(self):
+        # Genuine pre-ETO-44 state only: counts in the state file,
+        # no recorded metering head, no journal file, no baseline.
+        gate = make_gate(self.tmp, FakeClient())
+        st = routeseal.Store(self.path, POLICIES, KEYS,
+                             licence_gate=gate)
+        st.seal_dispatch(captures.capture())
+        with open(self.path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        for key in ("metering_head", "metering_records",
+                    "metering_baseline"):
+            data.pop(key, None)
+        with open(self.path, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=1, sort_keys=True)
         os.remove(self.path + ".metering.jsonl")
         st2 = routeseal.Store(self.path, POLICIES, KEYS,
                               licence_gate=gate)
