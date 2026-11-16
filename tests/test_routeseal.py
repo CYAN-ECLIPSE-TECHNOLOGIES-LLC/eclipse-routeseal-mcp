@@ -471,9 +471,17 @@ class TestMcpSurface(Base):
                              {"error": "NO_SUCH_TOOL"})
 
     def test_check_reveals_clause_only(self):
-        st = server.store()
-        out = st.seal_dispatch(captures.capture(
-            selected="beta", binding="evt-mcp1"))
+        # F-ETO44-2: the server face is licence-gated by default;
+        # this surface test opts into the explicit fixture bypass.
+        os.environ["ROUTESEAL_LICENCE_FIXTURE_BYPASS"] = "1"
+        server._store = None
+        try:
+            st = server.store()
+            out = st.seal_dispatch(captures.capture(
+                selected="beta", binding="evt-mcp1"))
+        finally:
+            del os.environ["ROUTESEAL_LICENCE_FIXTURE_BYPASS"]
+            server._store = None
         view = server.call_tool(
             "routeseal_check",
             {"dispatch_seal_id": out["dispatch_seal_id"]})
