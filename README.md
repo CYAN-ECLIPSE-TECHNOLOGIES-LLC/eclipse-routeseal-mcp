@@ -64,7 +64,7 @@ store that fails verification fails closed.
 
 ## Status
 
-v0.1.0 · built · **bench-pending** (independent bench requested;
+v0.1.1 · built · **bench-pending** (independent bench requested;
 builder tests are not a bench verdict) · name "Cyan Eclipse
 Routeseal" is provisional pending trademark screen · not listed,
 not offered for sale — review-first standing posture.

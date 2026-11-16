@@ -37,7 +37,7 @@ import logic  # noqa: E402
 import metering_journal as _mj  # noqa: E402
 from licence_gate import LicenceGate  # noqa: E402
 
-TOOL_VERSION = "0.1.0"
+TOOL_VERSION = "0.1.1"
 SERVER_ID = "eclipse-routeseal"
 
 CLAIM = ("Routeseal seals the routing decision at the moment of "

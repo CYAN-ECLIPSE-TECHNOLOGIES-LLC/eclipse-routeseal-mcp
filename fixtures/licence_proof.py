@@ -44,7 +44,7 @@ class Mcp:
         self.call("initialize", {"protocolVersion": "2025-03-26",
                                  "capabilities": {}, "clientInfo": {
                                      "name": "routeseal-eto44-proof",
-                                     "version": "0.1.0"}})
+                                     "version": "0.1.1"}})
 
     def call(self, method, params):
         self.n += 1

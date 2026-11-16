@@ -19,5 +19,5 @@ icon ships only on the owner's per-icon approval.
   MCP `serverInfo`) carries the composite name and version.
 - **About/identity surface:** README.md carries the composite
   wordmark, the gate §5 claim text verbatim, the custody
-  statement, and status (v0.1.0 · built · bench-pending ·
+  statement, and status (v0.1.1 · built · bench-pending ·
   provisional name).
