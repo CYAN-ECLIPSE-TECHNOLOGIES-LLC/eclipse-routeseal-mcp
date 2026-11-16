@@ -41,7 +41,9 @@ def _load_activation_client(base_url):
     env_dir = os.environ.get("CETLIC_CLIENT_DIR")
     if env_dir:
         candidates.append(env_dir)
-    candidates.append("/home/witness/app-family/cyan-eclipse-license-server")
+    # CM-2 cure (Coding Standard 3.11): no internal host absolute
+    # paths in shipped code — the sibling candidate below resolves
+    # the same License Server tree on the maintenance home.
     sibling = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                            "..", "cyan-eclipse-license-server")
     candidates.append(os.path.normpath(sibling))
@@ -109,4 +111,4 @@ class LicenceGate:
             state = r.get("state", "LICENSE_UNKNOWN")
             return state in PAID_STATES, state
         except Exception as exc:
-            return False, "LICENSE_SERVER_UNREACHABLE"
+            return False, f"LICENSE_SERVER_UNREACHABLE:{type(exc).__name__}"
